@@ -1,0 +1,423 @@
+import 'dart:developer';
+import 'dart:io';
+
+import 'package:be_with_me_new_new/core/const/app_colors.dart';
+import 'package:be_with_me_new_new/features/helper/domain/entites/helper_entity.dart';
+import 'package:be_with_me_new_new/features/helper/presintation/blocs/profile%20bloc/profile_bloc.dart';
+import 'package:be_with_me_new_new/features/helper/presintation/blocs/profile%20bloc/profile_events.dart';
+import 'package:be_with_me_new_new/features/helper/presintation/blocs/profile%20bloc/profile_states.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../../../core/utils/shared_preferences_manager.dart';
+
+class ProfileScreen extends StatelessWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey[200],
+      appBar: AppBar(
+        backgroundColor: BeWithMeColors.mainColor,
+        title: const Text("Profile", style: TextStyle(color: Colors.white)),
+        centerTitle: true,
+        leading: Container(),
+      ),
+      body: BlocBuilder<ProfileBloc, ProfileState>(
+        builder: (context, state) {
+          if (state is ProfileLoading) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (state is GetProfileSuccess) {
+            return _buildProfileContent(context, state.profile);
+          } else if (state is UpdateProfileSuccess) {
+            // الحصول على البيانات الأصلية من الحالة السابقة
+            final previousState = context.read<ProfileBloc>().state;
+            HelperEntity originalProfile;
+
+            if (previousState is GetProfileSuccess) {
+              originalProfile = previousState.profile;
+            } else if (previousState is UpdateProfileLoading) {
+              originalProfile = previousState.currentProfile;
+            }
+            // استخدام القيم المحدثة مع الحفاظ على القيم الأصلية للبيانات التي لا تتغير
+            return _buildProfileContent(context, state.profile);
+          } else if (state is ProfileError) {
+            return Center(child: Text('حدث خطأ: ${state.message}'));
+          } else {
+            // حالة Initial نطلب تحميل البيانات
+            final token = SharedPreferencesManager.getToken();
+            if (token != null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                context.read<ProfileBloc>().add(GetProfileDataEvent());
+              });
+            }
+          }
+          return const Center(child: Text('قم بتحميل البيانات'));
+        },
+      ),
+    );
+  }
+
+  Widget _buildProfileContent(BuildContext context, HelperEntity profile) {
+    log('proooooooooooooooooooooooooooooooooooooooof ${profile.profileImageUrl}');
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          const SizedBox(height: 20),
+          // Profile Picture
+          Center(
+            child: CircleAvatar(
+              radius: 50,
+              backgroundImage: NetworkImage(
+                  "https://bewtihme-001-site1.jtempurl.com/${profile.profileImageUrl}"),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Edit Profile Button
+          TextButton(
+            onPressed: () => _showEditProfileDialog(context, profile),
+            child: const Text('Edit Profile',
+                style: TextStyle(color: BeWithMeColors.mainColor)),
+          ),
+          const SizedBox(height: 10),
+
+          // Profile Name
+          Text(
+            profile.fullName ?? "No Name",
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 20),
+
+          // Personal Info Card
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Personal info",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Divider(),
+                    _buildInfoRow(
+                      "Name",
+                      profile.fullName ?? "غير محدد",
+                      "Gender",
+                      profile.gender ?? "غير محدد",
+                    ),
+                    const SizedBox(height: 8),
+                    _buildInfoRow(
+                      "Language",
+                      profile.languagePreference ?? "غير محدد",
+                      "Email",
+                      profile.email ?? "غير محدد",
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Settings Options
+          _buildSettingOption(Icons.language, "Language"),
+          _buildSettingOption(Icons.share, "Share app"),
+          _buildSettingOption(Icons.logout, "Log out"),
+        ],
+      ),
+    );
+  }
+
+  void _showEditProfileDialog(
+      BuildContext context, HelperEntity profile) async {
+    final parentContext = context;
+    final nameController = TextEditingController(text: profile.fullName);
+    final genderController = TextEditingController(text: profile.gender);
+    final languageController =
+        TextEditingController(text: profile.languagePreference);
+    String? newImagePath;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return BlocProvider.value(
+          value: BlocProvider.of<ProfileBloc>(parentContext),
+          child: BlocListener<ProfileBloc, ProfileState>(
+            listener: (context, state) {
+              if (state is UpdateProfileSuccess) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(parentContext).showSnackBar(
+                  const SnackBar(content: Text('Profile Updated Successfuly')),
+                );
+              }
+            },
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                return AlertDialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  title: const Center(
+                    child: Text(
+                      'Edit Profile',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: BeWithMeColors.mainColor,
+                      ),
+                    ),
+                  ),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // صورة البروفايل
+                        GestureDetector(
+                          onTap: () =>
+                              _showImageSourceDialog(context, setState, (path) {
+                            newImagePath = path;
+                          }),
+                          child: Stack(
+                            children: [
+                              CircleAvatar(
+                                radius: 50,
+                                backgroundImage: newImagePath != null
+                                    ? FileImage(File(newImagePath!))
+                                    : (profile.profileImageUrl != null
+                                            ? NetworkImage(
+                                                "https://bewtihme-001-site1.jtempurl.com/${profile.profileImageUrl}")
+                                            : const AssetImage(
+                                                'assets/default_profile.png'))
+                                        as ImageProvider,
+                              ),
+                              Positioned(
+                                bottom: 0,
+                                right: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: const BoxDecoration(
+                                    color: BeWithMeColors.mainColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.camera_alt,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const SizedBox(height: 16),
+                        _buildEditField(
+                          controller: genderController,
+                          label: 'Gender',
+                          icon: Icons.people,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildEditField(
+                          controller: languageController,
+                          label: 'Language',
+                          icon: Icons.language,
+                        ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('إلغاء',
+                          style: TextStyle(color: Colors.red)),
+                    ),
+                    const SizedBox(width: 10),
+                    BlocBuilder<ProfileBloc, ProfileState>(
+                      builder: (context, state) {
+                        return ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: BeWithMeColors.mainColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
+                          ),
+                          onPressed: state is UpdateProfileLoading
+                              ? null
+                              : () {
+                                  BlocProvider.of<ProfileBloc>(parentContext)
+                                      .add(
+                                    UpdateProfileEvent(
+                                      fullName: nameController.text,
+                                      gender: genderController.text,
+                                      languagePreference:
+                                          languageController.text,
+                                      profileImage: newImagePath ??
+                                          profile.profileImageUrl ??
+                                          '',
+                                    ),
+                                  );
+                                },
+                          child: state is UpdateProfileLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('حفظ',
+                                  style: TextStyle(color: Colors.white)),
+                        );
+                      },
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showImageSourceDialog(
+    BuildContext context,
+    StateSetter setState,
+    Function(String) onImageSelected,
+  ) async {
+    final ImagePicker picker = ImagePicker();
+
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'اختر مصدر الصورة',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.photo_library,
+                  color: BeWithMeColors.mainColor),
+              title: const Text('المعرض'),
+              onTap: () async {
+                Navigator.pop(context);
+                final XFile? image =
+                    await picker.pickImage(source: ImageSource.gallery);
+                if (image != null) {
+                  setState(() => onImageSelected(image.path));
+                }
+              },
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.camera_alt, color: BeWithMeColors.mainColor),
+              title: const Text('الكاميرا'),
+              onTap: () async {
+                Navigator.pop(context);
+                final XFile? image =
+                    await picker.pickImage(source: ImageSource.camera);
+                if (image != null) {
+                  setState(() => onImageSelected(image.path));
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEditField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+  }) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: BeWithMeColors.mainColor),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Colors.grey),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Colors.grey),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide:
+              const BorderSide(color: BeWithMeColors.mainColor, width: 2),
+        ),
+      ),
+    );
+  }
+
+  /// **Builds a Row for Personal Info Section**
+  Widget _buildInfoRow(
+    String title1,
+    String value1,
+    String title2,
+    String value2,
+  ) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        _buildInfoColumn(title1, value1),
+        _buildInfoColumn(title2, value2),
+      ],
+    );
+  }
+
+  /// **Helper Method to Build a Column for Info**
+  Widget _buildInfoColumn(String title, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+      ],
+    );
+  }
+
+  /// **Builds a Setting Option Row**
+  Widget _buildSettingOption(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.black),
+          const SizedBox(width: 10),
+          Text(text, style: const TextStyle(fontSize: 16)),
+        ],
+      ),
+    );
+  }
+}

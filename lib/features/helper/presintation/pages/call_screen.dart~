@@ -1,0 +1,636 @@
+import 'dart:async';
+import 'dart:developer';
+
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:be_with_me_new_new/features/helper/data/models/requests/call_init_model_request.dart';
+import 'package:be_with_me_new_new/features/helper/presintation/blocs/calls%20bloc/calls_bloc.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:be_with_me_new_new/core/const/agora_consts.dart';
+import 'package:be_with_me_new_new/features/helper/presintation/blocs/calls%20bloc/call_events.dart';
+import 'package:be_with_me_new_new/features/helper/presintation/blocs/calls%20bloc/calls_states.dart';
+
+class EnhancedAgoraCallScreen extends StatefulWidget {
+  final int postId;
+  final String acceptorId;
+
+  const EnhancedAgoraCallScreen({
+    Key? key,
+    required this.postId,
+    required this.acceptorId,
+  }) : super(key: key);
+
+  @override
+  _EnhancedAgoraCallScreenState createState() => _EnhancedAgoraCallScreenState();
+}
+
+class _EnhancedAgoraCallScreenState extends State<EnhancedAgoraCallScreen> with SingleTickerProviderStateMixin {
+  late final RtcEngine _engine;
+  bool _isJoined = false;
+  bool _isMuted = false;
+  bool _isVideoEnabled = true;
+  List<int> _remoteUsers = [];
+  bool _isFrontCamera = true;
+  bool _isInitializing = false;
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+  bool _isControlsVisible = true;
+
+  // Call duration tracking
+  int _callDurationInSeconds = 0;
+  late Timer _callTimer;
+
+  // Theme colors
+  final Color _primaryColor = const Color(0xFF2A2D3E);
+  final Color _accentColor = const Color(0xFF6C63FF);
+  final Color _backgroundColor = Colors.black87;
+  final Color _controlBgColor = Colors.black54;
+
+  @override
+  void initState() {
+    super.initState();
+    log("Initializing call with postId: ${widget.postId}");
+    log("Acceptor ID: ${widget.acceptorId}");
+
+    // Animation for controls fade
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(_fadeController);
+
+    // Auto-hide controls after inactivity
+    _setupControlsAutoHide();
+
+    _initializeCall();
+  }
+
+  void _setupControlsAutoHide() {
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted && _isControlsVisible) {
+        setState(() {
+          _isControlsVisible = false;
+          _fadeController.forward();
+        });
+      }
+    });
+  }
+
+  void _showControls() {
+    if (!_isControlsVisible) {
+      setState(() {
+        _isControlsVisible = true;
+        _fadeController.reverse();
+      });
+      _setupControlsAutoHide();
+    } else {
+      // Reset timer if controls are already visible
+      _setupControlsAutoHide();
+    }
+  }
+
+  Future<void> _initializeCall() async {
+    setState(() => _isInitializing = true);
+
+    // Trigger the InitCallEvent with the required parameters
+    context.read<CallsBloc>().add(InitCallEvent(
+      callInitRequestModel: CallInitRequestModel(
+        postId: widget.postId,
+        acceptorId: widget.acceptorId,
+      ),
+    ));
+  }
+
+  Future<void> _initAgora(String appId, String channelName, String token) async {
+    _engine = createAgoraRtcEngine();
+    await _engine.initialize(RtcEngineContext(
+      appId: appId,
+      channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+    ));
+
+    await _engine.enableVideo();
+    await _engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
+
+    // Set video encoder configuration for better quality
+    await _engine.setVideoEncoderConfiguration(
+      const VideoEncoderConfiguration(
+        dimensions: VideoDimensions(width: 1280, height: 720),
+        frameRate: 30,
+        bitrate: 1500,
+      ),
+    );
+
+    _engine.registerEventHandler(
+      RtcEngineEventHandler(
+        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+          debugPrint('Successfully joined channel');
+          setState(() {
+            _isJoined = true;
+            _isInitializing = false;
+          });
+
+          // Start call timer when joined
+          _startCallTimer();
+        },
+        onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+          debugPrint('Remote user joined: $remoteUid');
+          setState(() => _remoteUsers.add(remoteUid));
+        },
+        onUserOffline: (RtcConnection connection, int remoteUid,
+            UserOfflineReasonType reason) {
+          debugPrint('Remote user left: $remoteUid');
+          setState(() => _remoteUsers.remove(remoteUid));
+        },
+        onError: (ErrorCodeType err, String msg) {
+          debugPrint('Error occurred: $err - $msg');
+          setState(() => _isInitializing = false);
+
+          // Show error to user
+          _showError("Call error: $msg");
+        },
+        onConnectionStateChanged: (RtcConnection connection,
+            ConnectionStateType state, ConnectionChangedReasonType reason) {
+          debugPrint('Connection state changed: $state, reason: $reason');
+
+          if (state == ConnectionStateType.connectionStateDisconnected ||
+              state == ConnectionStateType.connectionStateFailed) {
+            _showError("Connection lost. Please check your internet connection.");
+          }
+        },
+      ),
+    );
+  }
+
+  void _startCallTimer() {
+    _callTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        _callDurationInSeconds++;
+      });
+    });
+  }
+
+  String _formatCallDuration() {
+    int hours = _callDurationInSeconds ~/ 3600;
+    int minutes = (_callDurationInSeconds % 3600) ~/ 60;
+    int seconds = _callDurationInSeconds % 60;
+
+    if (hours > 0) {
+      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    } else {
+      return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+  }
+
+  void _showError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _joinChannel(
+      String appId, String channelName, String token, int uid) async {
+    await _initAgora(appId, channelName, token);
+    await _engine.joinChannel(
+      token: token,
+      channelId: channelName,
+      uid: uid,
+      options: const ChannelMediaOptions(
+        channelProfile: ChannelProfileType.channelProfileCommunication,
+        clientRoleType: ClientRoleType.clientRoleBroadcaster,
+      ),
+    );
+  }
+
+  Future<void> _leaveChannel() async {
+    if (_isJoined) {
+      await _engine.leaveChannel();
+
+      if (_callTimer.isActive) {
+        _callTimer.cancel();
+      }
+
+      setState(() {
+        _isJoined = false;
+        _remoteUsers.clear();
+      });
+    }
+
+    Navigator.pop(context);
+  }
+
+  Future<void> _toggleMute() async {
+    await _engine.muteLocalAudioStream(!_isMuted);
+    setState(() => _isMuted = !_isMuted);
+  }
+
+  Future<void> _toggleVideo() async {
+    await _engine.muteLocalVideoStream(!_isVideoEnabled);
+    setState(() => _isVideoEnabled = !_isVideoEnabled);
+  }
+
+  Future<void> _switchCamera() async {
+    await _engine.switchCamera();
+    setState(() => _isFrontCamera = !_isFrontCamera);
+  }
+
+  Future<bool> _onWillPop() async {
+    return await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _primaryColor,
+        title: const Text('End Call', style: TextStyle(color: Colors.white)),
+        content: const Text('Are you sure you want to end this call?',
+            style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('Cancel', style: TextStyle(color: _accentColor)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(true);
+              _leaveChannel();
+            },
+            child: const Text('End Call', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    if (_callTimer.isActive) {
+      _callTimer.cancel();
+    }
+    if (_isJoined) {
+      _engine.leaveChannel();
+      _engine.release();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocConsumer<CallsBloc, CallsStates>(
+      listener: (context, state) {
+        if (state is InitCallSuccces) {
+          log('App ID: ${state.callInitResponseModel.appId}');
+          log('Channel Name: ${state.callInitResponseModel.channelName}');
+          log('UID: ${state.callInitResponseModel.uid.toString()}');
+
+          // When call initialization is successful, join the Agora channel
+          _joinChannel(
+            state.callInitResponseModel.appId,
+            state.callInitResponseModel.channelName,
+            '', // Token - you might want to get this from response if it's dynamic
+            int.parse(state.callInitResponseModel.uid),
+          );
+        } else if (state is InitCallError) {
+          // Show error message if call initialization fails
+          _showError(state.message);
+          setState(() => _isInitializing = false);
+        }
+      },
+      builder: (context, state) {
+        return WillPopScope(
+          onWillPop: _onWillPop,
+          child: Scaffold(
+            backgroundColor: _backgroundColor,
+            extendBodyBehindAppBar: true,
+            appBar: _buildAppBar(),
+            body: GestureDetector(
+              onTap: _showControls,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Main content - Remote video or waiting screen
+                  _renderMainContent(),
+
+                  // Call duration display
+                  if (_isJoined) _buildCallDurationDisplay(),
+
+                  // Local video
+                  if (_isJoined) _buildLocalVideoView(),
+
+                  // Control panel at bottom
+                  if (_isJoined) _buildControlPanel(),
+
+                  // Loading indicator
+                  if (_isInitializing) _buildLoadingIndicator(),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      title: const Text(
+        'Video Call',
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      centerTitle: true,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+        onPressed: _onWillPop,
+      ),
+    );
+  }
+
+  Widget _renderMainContent() {
+    if (_remoteUsers.isEmpty && !_isInitializing) {
+      return _buildWaitingScreen();
+    }
+
+    if (_remoteUsers.isEmpty) {
+      return const SizedBox(); // Empty while initializing
+    }
+
+    return AgoraVideoView(
+      controller: VideoViewController.remote(
+        rtcEngine: _engine,
+        canvas: VideoCanvas(uid: _remoteUsers.first),
+        connection: RtcConnection(channelId: AgoraConsts.channel),
+      ),
+    );
+  }
+
+  Widget _buildWaitingScreen() {
+    return Container(
+      color: _backgroundColor,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.person_outline,
+            color: Colors.white54,
+            size: 80,
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Waiting for participants...',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: 36,
+            height: 36,
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(_accentColor),
+              strokeWidth: 3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCallDurationDisplay() {
+    return Positioned(
+      top: 80,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black45,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            _formatCallDuration(),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocalVideoView() {
+    return Positioned(
+      right: 20,
+      top: 100,
+      child: GestureDetector(
+        onTap: _switchCamera,
+        child: Container(
+          width: 120,
+          height: 160,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 10,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Local video
+                _isVideoEnabled
+                    ? AgoraVideoView(
+                  controller: VideoViewController(
+                    rtcEngine: _engine,
+                    canvas: const VideoCanvas(uid: 0),
+                  ),
+                )
+                    : Container(
+                  color: _primaryColor,
+                  child: const Center(
+                    child: Icon(
+                      Icons.videocam_off,
+                      color: Colors.white54,
+                      size: 40,
+                    ),
+                  ),
+                ),
+
+                // PiP indicator
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Icon(
+                      Icons.flip_camera_android,
+                      color: Colors.white70,
+                      size: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildControlPanel() {
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: FadeTransition(
+        opacity: _fadeAnimation.drive(CurveTween(curve: Curves.easeOut)),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: [
+                Colors.black87,
+                Colors.black54,
+                Colors.transparent,
+              ],
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildControlButton(
+                icon: _isMuted ? Icons.mic_off : Icons.mic,
+                backgroundColor: _isMuted ? Colors.red : _controlBgColor,
+                onPressed: _toggleMute,
+                label: _isMuted ? 'Unmute' : 'Mute',
+              ),
+              _buildControlButton(
+                icon: _isVideoEnabled ? Icons.videocam : Icons.videocam_off,
+                backgroundColor: _isVideoEnabled ? _controlBgColor : Colors.red,
+                onPressed: _toggleVideo,
+                label: _isVideoEnabled ? 'Stop Video' : 'Start Video',
+              ),
+              _buildControlButton(
+                icon: Icons.cameraswitch,
+                backgroundColor: _controlBgColor,
+                onPressed: _switchCamera,
+                label: 'Switch',
+              ),
+              _buildControlButton(
+                icon: Icons.call_end,
+                backgroundColor: Colors.red,
+                onPressed: _onWillPop,
+                label: 'End',
+                iconSize: 30,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildControlButton({
+    required IconData icon,
+    required Color backgroundColor,
+    required VoidCallback onPressed,
+    required String label,
+    double iconSize = 24,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 6,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onPressed,
+              borderRadius: BorderRadius.circular(28),
+              child: Center(
+                child: Icon(
+                  icon,
+                  color: Colors.white,
+                  size: iconSize,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoadingIndicator() {
+    return Container(
+      color: Colors.black54,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 60,
+              height: 60,
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(_accentColor),
+                strokeWidth: 3,
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Connecting to call...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

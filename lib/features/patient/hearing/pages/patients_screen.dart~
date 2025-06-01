@@ -1,0 +1,456 @@
+import 'dart:developer';
+
+import 'package:be_with_me_new_new/core/utils/shared_preferences_manager.dart';
+import 'package:be_with_me_new_new/features/patient/hearing/pages/call_cnvert_txt.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import '../../../helper/domain/entites/patient_entity.dart';
+import '../../../helper/presintation/blocs/patient bloc/patient_bloc.dart';
+import '../../../helper/presintation/blocs/patient bloc/patient_events.dart';
+import '../../../helper/presintation/blocs/patient bloc/patient_states.dart';
+
+class PatientsScreen extends StatefulWidget {
+  const PatientsScreen({Key? key}) : super(key: key);
+
+  @override
+  _PatientsScreenState createState() => _PatientsScreenState();
+}
+
+class _PatientsScreenState extends State<PatientsScreen> {
+  final _searchController = TextEditingController();
+  bool _currentStatus = true;
+  String _currentSearch = '';
+  String token = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTokenAndPatients();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadTokenAndPatients() async {
+    final loadedToken = await SharedPreferencesManager.getToken();
+    if (loadedToken != null && mounted) {
+      setState(() {
+        token = loadedToken;
+      });
+      _loadPatients();
+    }
+  }
+
+  void _loadPatients() {
+    if (token.isEmpty) return;
+
+    if (_currentSearch.isEmpty) {
+      context.read<PatientBloc>().add(
+        GetAllPatientsEvent(
+          token: token,
+          status: _currentStatus,
+        ),
+      );
+    } else {
+      context.read<PatientBloc>().add(
+        SearchPatientsEvent(
+          token: token,
+          search: _currentSearch,
+          status: _currentStatus,
+        ),
+      );
+    }
+  }
+
+  void _onSearchChanged(String value) {
+    _currentSearch = value;
+    _loadPatients();
+  }
+
+  void _onStatusChanged(bool? value) {
+    if (value != null) {
+      setState(() {
+        _currentStatus = value;
+      });
+      _loadPatients();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (token.isEmpty) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(
+            color: Colors.teal,
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'My Patients',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: Colors.teal,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: _loadPatients,
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          _buildSearchAndFilterBar(),
+          Expanded(
+            child: BlocConsumer<PatientBloc, PatientState>(
+              listener: (context, state) {
+                if (state is PatientError) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(state.message),
+                      backgroundColor: Colors.red,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      margin: const EdgeInsets.all(12),
+                    ),
+                  );
+                }
+              },
+              builder: (context, state) {
+                if (state is PatientInitial || state is PatientLoading) {
+                  return const Center(
+                    child: CircularProgressIndicator(
+                      color: Colors.teal,
+                    ),
+                  );
+                } else if (state is GetAllPatientsSuccess || state is SearchPatientsSuccess) {
+                  final patients = state is GetAllPatientsSuccess
+                      ? state.patients
+                      : (state as SearchPatientsSuccess).patients;
+
+                  if (patients.patients.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Image.asset(
+                            'assets/images/no_data.png',
+                            height: 150,
+                            width: 150,
+                            errorBuilder: (context, error, stackTrace) {
+                              return const Icon(
+                                Icons.person_search,
+                                size: 100,
+                                color: Colors.grey,
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'No patients found',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return RefreshIndicator(
+                    onRefresh: () async {
+                      _loadPatients();
+                    },
+                    color: Colors.teal,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.only(top: 8),
+                      itemCount: patients.patients.length,
+                      itemBuilder: (context, index) {
+                        return _buildPatientCard(patients.patients[index]);
+                      },
+                    ),
+                  );
+                } else if (state is PatientError) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          size: 64,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Error loading patients',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Text(
+                            state.message,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: _loadPatients,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.teal,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                } else {
+                  log('Unknown state: $state');
+                  return const Center(
+                    child: Text('No patients available'),
+                  );
+                }
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchAndFilterBar() {
+    return Container(
+      padding: const EdgeInsets.all(16.0),
+      decoration: BoxDecoration(
+        color: Colors.teal.withOpacity(0.1),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
+      child: Column(
+        children: [
+          TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search patients...',
+              prefixIcon: const Icon(Icons.search, color: Colors.teal),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                icon: const Icon(Icons.clear, color: Colors.grey),
+                onPressed: () {
+                  _searchController.clear();
+                  _onSearchChanged('');
+                },
+              )
+                  : null,
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: const BorderSide(color: Colors.teal, width: 1),
+              ),
+            ),
+            onChanged: _onSearchChanged,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Text(
+                'Status:',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.teal.withOpacity(0.3)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<bool>(
+                    value: _currentStatus,
+                    items: const [
+                      DropdownMenuItem(
+                        value: true,
+                        child: Text(
+                          'Active',
+                          style: TextStyle(color: Colors.green),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: false,
+                        child: Text(
+                          'Inactive',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    ],
+                    onChanged: _onStatusChanged,
+                    icon: const Icon(Icons.arrow_drop_down, color: Colors.teal),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPatientCard(Patient patient) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          // Handle patient tap
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Avatar circle
+              CircleAvatar(
+                radius: 30,
+                backgroundColor: Colors.teal.withOpacity(0.2),
+                child: Text(
+                  patient.fullName.isNotEmpty ? patient.fullName[0].toUpperCase() : '?',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Patient info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      patient.fullName,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    if (patient.age != null)
+                      Row(
+                        children: [
+                          const Icon(Icons.cake, size: 16, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Age: ${patient.age}',
+                            style: TextStyle(color: Colors.grey.shade700),
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _currentStatus ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _currentStatus ? 'Active' : 'Inactive',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: _currentStatus ? Colors.green : Colors.red,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              // Call button
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.teal,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.teal.withOpacity(0.3),
+                      spreadRadius: 1,
+                      blurRadius: 3,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: IconButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => VoiceChatScreen(
+                          targetUserId: patient.id,
+                          isCaller: true,
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.call, color: Colors.white),
+                  tooltip: 'Call Patient',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

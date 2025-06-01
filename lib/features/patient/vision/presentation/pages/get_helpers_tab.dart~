@@ -1,0 +1,444 @@
+import 'package:be_with_me_new_new/core/const/app_colors.dart';
+import 'package:be_with_me_new_new/features/patient/vision/data/models/response/get_helpers_response_model.dart';
+import 'package:be_with_me_new_new/features/patient/vision/presentation/blocs/helperbloc/halper_states.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shimmer/shimmer.dart';
+
+import '../blocs/helperbloc/helper_bloc.dart';
+
+class PeopleScreen extends StatelessWidget {
+  const PeopleScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<HelperBloc, HelperState>(
+      builder: (context, state) {
+        return SafeArea(
+            child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Search Bar
+              _buildSearchBar(),
+              const SizedBox(height: 16),
+
+              // Content
+              Expanded(child: _buildBodyContent(state)),
+            ],
+          ),
+        ));
+      },
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: TextField(
+        textDirection: TextDirection.rtl,
+        decoration: InputDecoration(
+          hintText: "ابحث عن مساعد...",
+          hintStyle: TextStyle(color: Colors.grey[400], fontSize: 16),
+          prefixIcon: const Icon(Icons.search, color: BeWithMeColors.mainColor),
+          suffixIcon: Container(
+            margin: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: BeWithMeColors.mainColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.filter_list,
+                  color: BeWithMeColors.mainColor, size: 20),
+              onPressed: () {},
+              padding: EdgeInsets.zero,
+            ),
+          ),
+          border: InputBorder.none,
+          contentPadding:
+              const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBodyContent(HelperState state) {
+    if (state is HelperInitState || state is GetHelpersLoading) {
+      return _buildLoadingShimmer();
+    } else if (state is GetHelpersError) {
+      return _buildErrorWidget(state.message);
+    } else if (state is GetHelpersSuccess) {
+      return _buildHelpersGrid(state.helpers);
+    } else {
+      return const Center(child: Text('حالة غير معروفة'));
+    }
+  }
+
+  Widget _buildLoadingShimmer() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: GridView.builder(
+        itemCount: 6,
+        padding: const EdgeInsets.only(top: 8),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: 0.8,
+        ),
+        itemBuilder: (context, index) {
+          return Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  width: 100,
+                  height: 16,
+                  color: Colors.white,
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: 60,
+                  height: 12,
+                  color: Colors.white,
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: 80,
+                  height: 12,
+                  color: Colors.white,
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildErrorWidget(String message) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 60,
+            color: Colors.red[300],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'حدث خطأ',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.red[400],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () {
+              // Reload data
+            },
+            icon: const Icon(Icons.refresh),
+            label: const Text('إعادة المحاولة'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: BeWithMeColors.mainColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHelpersGrid(List<Helper> helpers) {
+    if (helpers.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.person_off,
+              size: 60,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'لا يوجد مساعدون متاحون حالياً',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return GridView.builder(
+      itemCount: helpers.length,
+      padding: const EdgeInsets.only(top: 8),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 0.75,
+      ),
+      itemBuilder: (context, index) {
+        return _buildHelperCard(helpers[index]);
+      },
+    );
+  }
+
+  Widget _buildHelperCard(Helper helper) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            // Navigate to helper details
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Status indicator
+                    Align(
+                      alignment: Alignment.topLeft,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    // Profile Image
+                    _buildProfileImage(helper.profileImageUrl),
+                    const SizedBox(height: 12),
+                    // Name
+                    Text(
+                      helper.fullName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 6),
+                    // Age
+                    Text(
+                      'العمر: ${helper.age} سنة',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Rating
+                    _buildRatingWidget(helper.rate),
+                    const SizedBox(height: 12),
+                    // Contact Button
+                    Container(
+                      width: double.infinity,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [BeWithMeColors.mainColor, Color(0xFF7B6FFF)],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.person, color: Colors.white, size: 16),
+                            SizedBox(width: 6),
+                            Text(
+                              'View Profile',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // More options
+              Positioned(
+                top: 0,
+                right: 0,
+                child: PopupMenuButton(
+                  icon: const Icon(Icons.more_vert, color: Colors.grey),
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'favorite',
+                      child: Row(
+                        children: [
+                          Icon(Icons.favorite_border, size: 20),
+                          SizedBox(width: 8),
+                          Text('إضافة للمفضلة'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'info',
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 20),
+                          SizedBox(width: 8),
+                          Text('معلومات إضافية'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileImage(String imageUrl) {
+    return Container(
+      width: 90,
+      height: 90,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            BeWithMeColors.mainColor.withOpacity(0.3),
+            BeWithMeColors.mainColor.withOpacity(0.1),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: BeWithMeColors.mainColor.withOpacity(0.2),
+            blurRadius: 10,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(4),
+      child: ClipOval(
+        child: Image.network(
+          imageUrl,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                        loadingProgress.expectedTotalBytes!
+                    : null,
+                strokeWidth: 2,
+                color: BeWithMeColors.mainColor,
+              ),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) => Container(
+            color: Colors.grey[100],
+            child: const Icon(
+              Icons.person,
+              size: 40,
+              color: Colors.grey,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRatingWidget(double rate) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.star, color: Colors.amber, size: 18),
+          const SizedBox(width: 4),
+          Text(
+            rate.toStringAsFixed(1),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '(${(rate * 10).toInt()})',
+            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}

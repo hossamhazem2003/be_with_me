@@ -1,0 +1,85 @@
+import 'package:be_with_me_new_new/features/helper/data/helper%20data%20source/patient_data_source.dart';
+import 'package:be_with_me_new_new/features/helper/domain/repositories/patient_repository.dart';
+import 'package:be_with_me_new_new/features/helper/domain/usecases/get_all_patients_usecase.dart';
+import 'package:be_with_me_new_new/features/helper/domain/usecases/search_patients_usecase.dart';
+import 'package:be_with_me_new_new/features/helper/presintation/blocs/patient%20bloc/patient_bloc.dart';
+import 'package:be_with_me_new_new/features/patient/hearing/pages/call_cnvert_txt.dart';
+import 'package:be_with_me_new_new/features/patient/hearing/pages/lip%20sync.dart';
+import 'package:be_with_me_new_new/features/patient/hearing/pages/speech_to_txt.dart';
+import 'package:be_with_me_new_new/core/const/app_colors.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import '../../hearing/pages/patients_screen.dart';
+
+class HearingProblemsScreen extends StatefulWidget {
+  const HearingProblemsScreen({super.key});
+
+  @override
+  _HearingProblemsScreenState createState() => _HearingProblemsScreenState();
+}
+
+class _HearingProblemsScreenState extends State<HearingProblemsScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: BeWithMeColors.backGroundColor,
+      appBar: AppBar(
+        backgroundColor: BeWithMeColors.mainColor,
+        centerTitle: true,
+        leading: IconButton(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            icon: Icon(
+              Icons.arrow_back_ios,
+              color: Colors.white,
+            )),
+        title: Text(
+          'Hearing Problems',
+          style: TextStyle(color: Colors.white),
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          unselectedLabelStyle: TextStyle(color: Colors.white),
+          labelStyle: TextStyle(color: Colors.white),
+          indicatorColor: Colors.white,
+          tabs: [
+            Tab(text: 'Speech to Text'),
+            Tab(text: 'Lip Sync'),
+            Tab(text: 'Call'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // محتوى تبويب Speech to Text
+          SpeechScreen(),
+
+          // محتوى تبويب Lip Sync
+          SyncSoTab(),
+          
+          BlocProvider(create: (_)=>  PatientBloc(getAllPatientsUseCase: GetAllPatientsUseCase(PatientDataSource()), searchPatientsUseCase: SearchPatientsUseCase(PatientDataSource())))
+
+          PatientsScreen()
+        ],
+      ),
+    );
+  }
+}
