@@ -1,20 +1,25 @@
-<<<<<<< HEAD
-# be_with_me_new_new
-
-A new Flutter project.
-
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-=======
 # be_with_me
->>>>>>> f7be453d523769e9287684b83832398be3611da2
+
+
+🧠 About "Be With Me"
+Be With Me is an assistive mobile application developed using Flutter, designed to support people with visual and hearing impairments. The app leverages AI, voice recognition, and camera-based object detection to improve daily navigation, safety, and communication.
+
+🎯 Target Users
+People with visual impairments (blind or low vision)
+
+People with hearing impairments (deaf or hard of hearing)
+
+🧩 Key Features
+👁️ For Visually Impaired Users:
+AI-Powered Camera Detection: Alerts users in Arabic when an object is detected within 2 meters.
+
+Help Request System: Allows users to post help requests that assistants can accept and respond to via video call.
+
+Video Call Support: Assistants can guide users through live video with saved call history and frequent contacts.
+
+🧏 For Hearing Impaired Users:
+Speech-to-Text Conversion: Converts spoken language to readable text using a record button.
+
+Real-Time Transcription in Calls: Enables voice calls with live speech-to-text subtitles.
+
+Lip-Sync Animation: Displays animated mouth movements based on typed text to support lip-reading.
