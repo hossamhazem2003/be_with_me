@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # be_with_me_new_new
 
 A new Flutter project.
@@ -14,3 +15,6 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+=======
+# be_with_me
+>>>>>>> f7be453d523769e9287684b83832398be3611da2
